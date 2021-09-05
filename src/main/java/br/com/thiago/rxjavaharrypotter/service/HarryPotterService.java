@@ -1,6 +1,9 @@
 package br.com.thiago.rxjavaharrypotter.service;
 
+import br.com.thiago.rxjavaharrypotter.entity.Casa;
+import br.com.thiago.rxjavaharrypotter.exception.IdDaCasaNaoEncontradaException;
 import br.com.thiago.rxjavaharrypotter.exception.IdDoAlunoNaoExisteException;
+import br.com.thiago.rxjavaharrypotter.exception.NomeDoAlunoNaoEncontradoException;
 import br.com.thiago.rxjavaharrypotter.repository.HarryPotterRepository;
 import br.com.thiago.rxjavaharrypotter.request.AlunoRequest;
 import br.com.thiago.rxjavaharrypotter.request.CasaRequest;
@@ -23,19 +26,25 @@ public class HarryPotterService {
 
     public Single<AlunoResponse> adicionar(AlunoRequest alunoRequest) {
         return Single.create(single -> {
-             var aluno = alunoRequest.convert(getIdCasa().getIdCasa());
+             var aluno = alunoRequest.convert(getIdCasa());
              harryPotterRepository.save(aluno);
              single.onSuccess(new AlunoResponse(aluno));
         });
-
     }
 
-    private static CasaRequest getIdCasa() {
+    private static String getIdCasa() {
         String resourceUrl = "https://api-harrypotter.herokuapp.com/sortinghat";
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<String> resposta = restTemplate.getForEntity(resourceUrl, String.class);
         Gson gson = new Gson();
-        return gson.fromJson(resposta.getBody(), CasaRequest.class);
+        var casaRequest = gson.fromJson(resposta.getBody(), CasaRequest.class);
+        return casaRequest.getIdCasa();
+    }
+
+    public static Casa pegarDadosCasa(String idCasa) {
+        String resourceUrl = "https://api-harrypotter.herokuapp.com/house/" + idCasa;
+        RestTemplate restTemplate = new RestTemplate();
+        return restTemplate.getForObject(resourceUrl, Casa.class);
     }
 
     public Observable<Object> buscarTodosAlunos() {
@@ -46,17 +55,26 @@ public class HarryPotterService {
     }
 
     public Observable<Object> buscarPorNome(String nome) {
-        Single<Object> single = Single.create(emitter -> emitter.onSuccess(harryPotterRepository.findByNome(nome).stream()
-                .map(AlunoResponse::new).collect(Collectors.toList())));
+        var listaNomes = harryPotterRepository.findByNome(nome);
+        if(!listaNomes.isEmpty()) {
+            Single<Object> single = Single.create(emitter -> emitter.onSuccess(listaNomes.stream()
+                    .map(AlunoResponse::new).collect(Collectors.toList())));
+            return Observable.fromSingle(single);
+        } else {
+            throw new NomeDoAlunoNaoEncontradoException(nome);
+        }
 
-        return Observable.fromSingle(single);
     }
 
     public Observable<Object> buscarPorIdCasa(String idCasa) {
-        Single<Object> single = Single.create(emitter -> emitter.onSuccess(harryPotterRepository.findByIdCasa(idCasa).stream()
-                .map(AlunoResponse::new).collect(Collectors.toList())));
-
-        return Observable.fromSingle(single);
+        var listaAlunosPorCasa = harryPotterRepository.findByIdCasa(idCasa);
+        if(!listaAlunosPorCasa.isEmpty()) {
+            Single<Object> single = Single.create(emitter -> emitter.onSuccess(listaAlunosPorCasa.stream()
+                    .map(AlunoResponse::new).collect(Collectors.toList())));
+            return Observable.fromSingle(single);
+        } else {
+            throw new IdDaCasaNaoEncontradaException(idCasa);
+        }
     }
 
     public Single<AlunoResponse> buscarPorIdAluno(String idAluno) {
